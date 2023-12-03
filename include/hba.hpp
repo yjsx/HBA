@@ -40,9 +40,9 @@ public:
     pose_size = 0;
     layer_num = 1;
     max_iter = 10;
-    downsample_size = 0.1;
-    voxel_size = 4.0;
-    eigen_ratio = 0.1;
+    downsample_size = 0.2;
+    voxel_size = 2.0; //4
+    eigen_ratio = 0.08; // 0.1
     reject_ratio = 0.05;
     pose_vec.clear(); mthreads.clear(); pcds.clear();
     hessians.clear(); mem_costs.clear();
@@ -81,6 +81,8 @@ public:
   {
     if(layer_num == 1)
       pose_size = pose_vec.size();
+      // pose_size = 2000;
+
     else
       pose_size = pose_size_;
     tail = (pose_size - WIN_SIZE) % GAP;
@@ -135,21 +137,29 @@ public:
     data_path = data_path_;
 
     layers.resize(total_layer_num);
+    std::cout<<"init layers"<<std::endl;
     for(int i = 0; i < total_layer_num; i++)
     {
+      std::cout<<"layer: "<<i<<std::endl;
+
       layers[i].layer_num = i+1;
       layers[i].thread_num = thread_num;
     }
     layers[0].data_path = data_path;
+    std::cout<<data_path + "pose.json"<<std::endl;
     layers[0].pose_vec = mypcl::read_pose(data_path + "pose.json");
+    std::cout<<"init parameter"<<std::endl;
     layers[0].init_parameter();
+    std::cout<<"init storage"<<std::endl;
     layers[0].init_storage(total_layer_num);
 
     for(int i = 1; i < total_layer_num; i++)
     {
       int pose_size_ = (layers[i-1].thread_num-1)*layers[i-1].part_length;
       pose_size_ += layers[i-1].tail == 0 ? layers[i-1].left_gap_num : (layers[i-1].left_gap_num+1);
+      std::cout<<"init parameter"<<std::endl;
       layers[i].init_parameter(pose_size_);
+      std::cout<<"init storage"<<std::endl;
       layers[i].init_storage(total_layer_num);
       layers[i].data_path = layers[i-1].data_path + "process1/";
     }

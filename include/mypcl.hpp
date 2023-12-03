@@ -58,7 +58,7 @@ namespace mypcl
     double tx, ty, tz, w, x, y, z;
     while(!file.eof())
     {
-      file >> tx >> ty >> tz >> w >> x >> y >> z;
+      file >> tx >> ty >> tz >> x >> y >> z >> w;
       Eigen::Quaterniond q(w, x, y, z);
       Eigen::Vector3d t(tx, ty, tz);
       pose_vec.push_back(pose(qe * q, qe * t + te));
@@ -156,8 +156,8 @@ namespace mypcl
       file << pose_vec[i].t(0) << " "
            << pose_vec[i].t(1) << " "
            << pose_vec[i].t(2) << " "
-           << pose_vec[i].q.w() << " " << pose_vec[i].q.x() << " "
-           << pose_vec[i].q.y() << " " << pose_vec[i].q.z();
+           << pose_vec[i].q.x() << " " << pose_vec[i].q.y() << " "
+           << pose_vec[i].q.z() << " " << pose_vec[i].q.w();
       if(i < pose_vec.size()-1) file << "\n";
     }
     file.close();

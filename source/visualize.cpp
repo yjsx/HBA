@@ -10,6 +10,7 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/filters/statistical_outlier_removal.h>
+#include <pcl/filters/filter.h>
 
 #include <sensor_msgs/PointCloud2.h>
 #include <geometry_msgs/PoseArray.h>
@@ -31,7 +32,28 @@
 
 using namespace std;
 using namespace Eigen;
-
+typedef pcl::PointXYZRGB PointType2;
+void transform_pointcloud_rgb(pcl::PointCloud<PointType2> const& pc_in,
+                            pcl::PointCloud<PointType2>& pt_out,
+                            Eigen::Vector3d t,
+                            Eigen::Quaterniond q)
+  {
+    size_t size = pc_in.points.size();
+    pt_out.points.resize(size);
+    for(size_t i = 0; i < size; i++)
+    {
+      Eigen::Vector3d pt_cur(pc_in.points[i].x, pc_in.points[i].y, pc_in.points[i].z);
+      Eigen::Vector3d pt_to;
+      // if(pt_cur.norm()<0.3) continue;
+      pt_to = q * pt_cur + t;
+      pt_out.points[i].x = pt_to.x();
+      pt_out.points[i].y = pt_to.y();
+      pt_out.points[i].z = pt_to.z();
+      // pt_out.points[i].r = pc_in.points[i].r;
+      // pt_out.points[i].g = pc_in.points[i].g;
+      // pt_out.points[i].b = pc_in.points[i].b;
+    }
+  }
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "visualize");
@@ -45,36 +67,46 @@ int main(int argc, char** argv)
 
   string file_path;
   double downsample_size, marker_size;
-  int pcd_name_fill_num;
+  int pcd_name_fill_num, gap, start;
 
   nh.getParam("file_path", file_path);
   nh.getParam("downsample_size", downsample_size);
   nh.getParam("pcd_name_fill_num", pcd_name_fill_num);
   nh.getParam("marker_size", marker_size);
+  nh.getParam("gap", gap);
+  nh.getParam("start", start);
+
+
 
   sensor_msgs::PointCloud2 debugMsg, cloudMsg, outMsg;
   vector<mypcl::pose> pose_vec;
-
+  cout<<file_path + "pose.json"<<endl;
   pose_vec = mypcl::read_pose(file_path + "pose.json");
   size_t pose_size = pose_vec.size();
   cout<<"pose size "<<pose_size<<endl;
 
-  pcl::PointCloud<PointType>::Ptr pc_surf(new pcl::PointCloud<PointType>);
-  pcl::PointCloud<pcl::PointXYZRGB>::Ptr color_full(new pcl::PointCloud<pcl::PointXYZRGB>);
+  pcl::PointCloud<PointType2>::Ptr pc_surf(new pcl::PointCloud<PointType2>);
+  pcl::PointCloud<PointType2>::Ptr color_full(new pcl::PointCloud<PointType2>);
 
   ros::Time cur_t;
   geometry_msgs::PoseArray parray;
   parray.header.frame_id = "camera_init";
   parray.header.stamp = cur_t;
   visualization_msgs::MarkerArray markerArray;
-
+  pcl::VoxelGrid<PointType2> downsample;
+  downsample.setLeafSize(downsample_size, downsample_size, downsample_size);
   cout<<"push enter to view"<<endl;
   getchar();
-  for(size_t i = 0; i < pose_size; i++)
+  for(size_t j = start/gap; j*gap < pose_size; j++)
   {
-    mypcl::loadPCD(file_path + "pcd/", pcd_name_fill_num, pc_surf, i);
+    size_t i = j * gap;
+    // mypcl::loadPCD(file_path + "pcd/", pcd_name_fill_num, pc_surf, i);
+    std::stringstream ss;
+    ss << std::setw(pcd_name_fill_num) << std::setfill('0') << i;
+    pcl::io::loadPCDFile(file_path + "pcd/" + ss.str() + ".pcd", *pc_surf);
 
-    pcl::PointCloud<PointType>::Ptr pc_filtered(new pcl::PointCloud<PointType>);
+
+    pcl::PointCloud<PointType2>::Ptr pc_filtered(new pcl::PointCloud<PointType2>);
     pc_filtered->resize(pc_surf->points.size());
     int cnt = 0;
     for(size_t j = 0; j < pc_surf->points.size(); j++)
@@ -84,8 +116,19 @@ int main(int argc, char** argv)
     }
     pc_filtered->resize(cnt);
     
-    mypcl::transform_pointcloud(*pc_filtered, *pc_filtered, pose_vec[i].t, pose_vec[i].q);
-    downsample_voxel(*pc_filtered, downsample_size);
+    transform_pointcloud_rgb(*pc_filtered, *pc_filtered, pose_vec[i].t, pose_vec[i].q);
+
+
+    downsample.setInputCloud(pc_filtered);
+    downsample.filter(*pc_filtered);
+    *color_full += *pc_filtered;
+    if(0)
+      if(j*gap % int(pose_size/5) == 0){
+        downsample.setInputCloud(color_full);
+        downsample.filter(*color_full);
+        pcl::io::savePCDFileASCII(file_path+"out.pcd", *color_full);
+      }
+    // downsample_voxel(*pc_filtered, downsample_size);
 
     pcl::toROSMsg(*pc_filtered, cloudMsg);
     cloudMsg.header.frame_id = "camera_init";
@@ -165,7 +208,7 @@ int main(int argc, char** argv)
     if(i%GAP == 0) markerArray.markers.push_back(marker_txt);
     pub_pose_number.publish(markerArray);
 
-    ros::Duration(0.001).sleep();
+    ros::Duration(0.0001).sleep();
   }
 
   ros::Rate loop_rate(1);

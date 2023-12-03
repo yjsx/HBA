@@ -48,3 +48,6 @@ target_link_libraries(hba ${catkin_LIBRARIES} ${PCL_LIBRARIES} gtsam)
 
 add_executable(visualize_map source/visualize.cpp)
 target_link_libraries(visualize_map ${catkin_LIBRARIES} ${PCL_LIBRARIES})
+
+add_executable(testba source/testba.cpp)
+target_link_libraries(testba ${catkin_LIBRARIES} ${PCL_LIBRARIES} gtsam)

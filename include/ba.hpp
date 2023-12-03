@@ -53,7 +53,6 @@ public:
     for(int i = 0; i < win_size; i++)
       if((*sig_orig)[i].N != 0)
         process_size++;
-
     #ifdef ENABLE_FILTER
     if(process_size < 1) return;
 
@@ -221,7 +220,6 @@ public:
     vector<VOX_FACTOR> sig_tran(win_size);
     int kk = 0; // The kk-th lambda value
     int gps_size = plvec_voxels.size();
-
     for(int a = 0; a < gps_size; a++)
     {
       const vector<VOX_FACTOR>& sig_orig = *plvec_voxels[a];
@@ -333,6 +331,7 @@ public:
     direct = saes.eigenvectors().col(0);
 
     eigen_ratio = saes.eigenvalues()[0] / saes.eigenvalues()[2]; // [0] is the smallest
+    // std::cout<<eigen_ratio;
     if(eigen_ratio > eigen_thr) return 0;
 
     double eva0 = saes.eigenvalues()[0];
@@ -368,7 +367,7 @@ public:
       }
 
     double prop = 1.0 * num_qua / num_all;
-
+    // std::cout<<" "<<prop<<std::endl;
     if(prop < 0.5) return 0;
     return 1;
   }
@@ -460,7 +459,7 @@ public:
   }
 
   void tras_opt(VOX_HESS& vox_opt)
-  {
+  { 
     if(octo_state == PLANE)
       vox_opt.push_voxel(&sig_orig, &vec_orig);
     else
@@ -611,8 +610,10 @@ public:
   void remove_outlier(vector<IMUST>& x_stats, VOX_HESS& voxhess, double ratio)
   {
     std::vector<double> residuals = voxhess.evaluate_residual(x_stats);
+
     std::sort(residuals.begin(), residuals.end()); // sort in ascending order
     double threshold = residuals[std::floor((1-ratio)*voxhess.plvec_voxels.size())-1];
+
     int reject_num = std::floor(ratio * voxhess.plvec_voxels.size());
     // std::cout << "vox_num before " << voxhess.plvec_voxels.size();
     // std::cout << ", reject threshold " << std::setprecision(3) << threshold << ", rejected " << reject_num;
