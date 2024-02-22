@@ -8,4 +8,4 @@ print('There are', file_count, 'files in the folder.')
 # 生成pose.json文件
 pose_data = '0 0 0 0 0 0 1\n' * file_count
 with open(os.path.join(folder_path, 'pose.json'), 'w') as f:
-    f.write(pose_data)
+    f.write(pose_data[:-1])

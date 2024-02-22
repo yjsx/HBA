@@ -4,6 +4,7 @@
 #include <thread>
 #include <fstream>
 #include <iomanip>
+#include <yaml-cpp/yaml.h>
 #include <Eigen/Sparse>
 #include <Eigen/Eigenvalues>
 #include <Eigen/SparseCholesky>
@@ -19,6 +20,8 @@
 #include "mypcl.hpp"
 #include "tools.hpp"
 #include "ba.hpp"
+#include "submap.hpp"
+
 
 class LAYER
 {
@@ -31,18 +34,19 @@ public:
   vector<mypcl::pose> pose_vec;
   std::vector<thread*> mthreads;
   std::vector<double> mem_costs;
+  std::vector<Submap> submaps;
 
   std::vector<VEC(6)> hessians;
   std::vector<pcl::PointCloud<PointType>::Ptr> pcds;
 
-  LAYER() 
+  LAYER()
   {
     pose_size = 0;
     layer_num = 1;
     max_iter = 10;
-    downsample_size = 0.2;
-    voxel_size = 4.0; //4
-    eigen_ratio = 0.1; // 0.1
+    downsample_size = 0.05;
+    voxel_size = 2.0; //4
+    eigen_ratio = 0.08; // 0.1
     reject_ratio = 0.05;
     pose_vec.clear(); mthreads.clear(); pcds.clear();
     hessians.clear(); mem_costs.clear();
@@ -129,8 +133,9 @@ public:
   int thread_num, total_layer_num;
   std::vector<LAYER> layers;
   std::string data_path;
+  std::vector<Submap> submaps;
 
-  HBA(int total_layer_num_, std::string data_path_, int thread_num_, double voxel_size, double eigen_ratio)
+  HBA(int total_layer_num_, std::string data_path_, int thread_num_)
   {
     total_layer_num = total_layer_num_;
     thread_num = thread_num_;
@@ -144,12 +149,28 @@ public:
 
       layers[i].layer_num = i+1;
       layers[i].thread_num = thread_num;
-      layers[i].voxel_size = voxel_size;
-      layers[i].eigen_ratio = eigen_ratio;
     }
+
+	submaps = get_submap_info(data_path+"config.yaml");
+
+
+
     layers[0].data_path = data_path;
     std::cout<<data_path + "pose.json"<<std::endl;
-    layers[0].pose_vec = mypcl::read_pose(data_path + "pose.json");
+	vector<mypcl::pose> pose_all;
+	for(auto& submap: submaps) {
+		vector<mypcl::pose> pose_tmp = mypcl::read_pose(submap.data_path + "pose.json", submap.rotation, submap.translation);
+		submap.length = pose_tmp.size();
+		pose_all.insert(pose_all.end(), pose_tmp.begin(), pose_tmp.end());
+	}
+
+	for(const auto& submap: submaps) {
+		std::cout<<submap.length<<std::endl;
+	}
+
+    layers[0].pose_vec = pose_all;
+    layers[0].submaps = submaps;
+
     std::cout<<"init parameter"<<std::endl;
     layers[0].init_parameter();
     std::cout<<"init storage"<<std::endl;
@@ -204,6 +225,7 @@ public:
     graph.add(gtsam::PriorFactor<gtsam::Pose3>(0, gtsam::Pose3(gtsam::Rot3(init_pose[0].q.toRotationMatrix()),
                                                                gtsam::Point3(init_pose[0].t)), priorModel));
     
+	std::cout<<"build init graph..."<<std::endl;
     for(uint i = 0; i < init_pose.size(); i++)
     {
       if(i > 0) initial.insert(i, gtsam::Pose3(gtsam::Rot3(init_pose[i].q.toRotationMatrix()), gtsam::Point3(init_pose[i].t)));
@@ -232,6 +254,7 @@ public:
             graph.push_back(factor);
           }
     }
+	std::cout<<"build upper graph..."<<std::endl;
 
     int pose_size = upper_pose.size();
     cnt = 0;
@@ -256,18 +279,39 @@ public:
         graph.push_back(factor);
       }
 
+	std::cout<<"isam update..."<<std::endl;
     gtsam::ISAM2Params parameters;
+	parameters.enableDetailedResults = true; 
+	parameters.evaluateNonlinearError = true;
     parameters.relinearizeThreshold = 0.01;
     parameters.relinearizeSkip = 1;
-    parameters.enableDetailedResults = true; 
-	  parameters.evaluateNonlinearError = true;
-    gtsam::ISAM2 isam(parameters);
-    std::ofstream out_file("/home/yjsx/catkin_yjsx/graph.txt");
-    graph.saveGraph(out_file);
-    out_file.close();
-    isam.update(graph, initial);
-    isam.update();
 
+    gtsam::ISAM2 isam(parameters);
+	// graph.print("Current graph Status: ");
+	// initial.print("Current Values: ");
+	
+	std::ofstream out_file("/home/yjsx/catkin_yjsx/graph.txt");
+	graph.saveGraph(out_file);
+	out_file.close();
+	try{
+	    isam.update(graph, initial);
+	}
+	catch (const gtsam::IndeterminantLinearSystemException& e) {
+		// 特定类型的 GTSAM 异常
+		std::cerr << "GTSAM IndeterminantLinearSystemException: " << e.what() << std::endl;
+		// ... 异常处理代码 ...
+	} catch (const std::exception& e) {
+		// 标准库异常
+		std::cerr << "Standard Exception: " << e.what() << std::endl;
+		// ... 异常处理代码 ...
+	} catch (...) {
+		// 未知类型的异常
+		std::cerr << "An unknown exception occurred." << std::endl;
+		// ... 异常处理代码 ...
+	}
+
+
+    isam.update();
     gtsam::Values results = isam.calculateEstimate();
 
     cout << "vertex size " << results.size() << endl;
@@ -277,7 +321,13 @@ public:
       gtsam::Pose3 pose = results.at(i).cast<gtsam::Pose3>();
       assign_qt(init_pose[i].q, init_pose[i].t, Eigen::Quaterniond(pose.rotation().matrix()), pose.translation());
     }
-    mypcl::write_pose(init_pose, data_path);
+
+	int index = 0;
+	for (int i = 0; i < submaps.size();i++){
+		vector<mypcl::pose> pose_tmp(init_pose.begin() + index, init_pose.begin() + index + submaps[i].length);
+		index += submaps[i].length;
+		mypcl::write_posem(pose_tmp, submaps[i].data_path, submaps[i].rotation, submaps[i].translation);
+	}
     printf("pgo complete\n");
   }
 };

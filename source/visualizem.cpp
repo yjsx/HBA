@@ -11,8 +11,6 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/filters/filter.h>
-#include <pcl/io/pcd_io.h>
-#include <pcl/common/common.h>
 
 #include <sensor_msgs/PointCloud2.h>
 #include <geometry_msgs/PoseArray.h>
@@ -31,10 +29,11 @@
 #include "ba.hpp"
 #include "tools.hpp"
 #include "mypcl.hpp"
+#include "submap.hpp"
 
 using namespace std;
 using namespace Eigen;
-typedef pcl::PointXYZI PointType2;
+typedef pcl::PointXYZRGB PointType2;
 
 void displayProgressBar(int progress, int total) {
     const int barWidth = 50; // Width of the progress bar
@@ -50,75 +49,36 @@ void displayProgressBar(int progress, int total) {
     std::cout << "] " << int(percentage * 100.0) << " %\r";
     std::cout.flush(); // Ensure the progress is displayed
 }
-
+std::pair<int, int> get_submap_index(std::vector<Submap> submaps, int j){
+	
+	for(int i = 0; i < submaps.size(); i++){
+		if(j < submaps[i].length)
+			return std::make_pair(i, j);
+		else	
+			j -= submaps[i].length;
+	}
+}
 void transform_pointcloud_rgb(pcl::PointCloud<PointType2> const& pc_in,
                             pcl::PointCloud<PointType2>& pt_out,
                             Eigen::Vector3d t,
-                            Eigen::Quaterniond q){
-	size_t size = pc_in.points.size();
-	pt_out.points.resize(size);
-	for(size_t i = 0; i < size; i++)
-	{
-		Eigen::Vector3d pt_cur(pc_in.points[i].x, pc_in.points[i].y, pc_in.points[i].z);
-		Eigen::Vector3d pt_to;
-		// if(pt_cur.norm()<0.3) continue;
-		pt_to = q * pt_cur + t;
-		pt_out.points[i].x = pt_to.x();
-		pt_out.points[i].y = pt_to.y();
-		pt_out.points[i].z = pt_to.z();
-		// pt_out.points[i].r = pc_in.points[i].r;
-		// pt_out.points[i].g = pc_in.points[i].g;
-		// pt_out.points[i].b = pc_in.points[i].b;
-	}
-}
-
-void downsampleAndMergePointCloud(
-    const pcl::PointCloud<PointType2>::Ptr &originalCloud,
-    pcl::PointCloud<PointType2>::Ptr &downsampledCloud,
-    float gridDistance,   pcl::VoxelGrid<PointType2> downsample){
-    // Define the bounds of the point cloud
-	Eigen::Vector4f minPt, maxPt;
-    pcl::getMinMax3D(*originalCloud, minPt, maxPt);
-
-    // Calculate the number of grids needed
-    int gridX = ceil((maxPt[0] - minPt[0]) / gridDistance);
-    int gridY = ceil((maxPt[1] - minPt[1]) / gridDistance);
-
-    // Initialize the output cloud
-    downsampledCloud->clear();
-
-    // Downsample points in each grid and merge them
-    for (int i = 0; i <= gridX; ++i)
+                            Eigen::Quaterniond q)
+  {
+    size_t size = pc_in.points.size();
+    pt_out.points.resize(size);
+    for(size_t i = 0; i < size; i++)
     {
-        for (int j = 0; j <= gridY; ++j)
-        {
-            // Define the corner points of the current grid
-            float startX = minPt[0] + i * gridDistance;
-            float startY = minPt[1] + j * gridDistance;
-            float endX = std::min(startX + gridDistance, maxPt[0]);
-            float endY = std::min(startY + gridDistance, maxPt[1]);
-
-            // Filter points within the current grid
-            pcl::PointCloud<PointType2>::Ptr gridCloud(new pcl::PointCloud<PointType2>);
-            for (auto &point : originalCloud->points)
-            {
-                if (point.x >= startX && point.x <= endX && point.y >= startY && point.y <= endY)
-                {
-                    gridCloud->push_back(point);
-                }
-            }
-
-            // Downsample the points within the grid
-            downsample.setInputCloud(gridCloud);
-            pcl::PointCloud<PointType2>::Ptr tempCloud(new pcl::PointCloud<PointType2>);
-            downsample.filter(*tempCloud);
-
-            // Merge the downsampled cloud
-            *downsampledCloud += *tempCloud;
-        }
+      Eigen::Vector3d pt_cur(pc_in.points[i].x, pc_in.points[i].y, pc_in.points[i].z);
+      Eigen::Vector3d pt_to;
+      // if(pt_cur.norm()<0.3) continue;
+      pt_to = q * pt_cur + t;
+      pt_out.points[i].x = pt_to.x();
+      pt_out.points[i].y = pt_to.y();
+      pt_out.points[i].z = pt_to.z();
+      // pt_out.points[i].r = pc_in.points[i].r;
+      // pt_out.points[i].g = pc_in.points[i].g;
+      // pt_out.points[i].b = pc_in.points[i].b;
     }
-}
-
+  }
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "visualize");
@@ -141,19 +101,22 @@ int main(int argc, char** argv)
   nh.getParam("gap", gap);
   nh.getParam("start", start);
 
-
-
+	std::vector<Submap> submaps = get_submap_info(data_path+"config.yaml");
+ 
   sensor_msgs::PointCloud2 debugMsg, cloudMsg, outMsg;
   vector<mypcl::pose> pose_vec;
   cout<<data_path + "pose.json"<<endl;
-  pose_vec = mypcl::read_pose(data_path + "pose.json");
+  for(auto& submap: submaps) {
+		vector<mypcl::pose> pose_tmp = mypcl::read_pose(submap.data_path + "pose.json", submap.rotation, submap.translation);
+		submap.length = pose_tmp.size();
+		pose_vec.insert(pose_vec.end(), pose_tmp.begin(), pose_tmp.end());
+	}
+
   size_t pose_size = pose_vec.size();
   cout<<"pose size "<<pose_size<<endl;
 
   pcl::PointCloud<PointType2>::Ptr pc_surf(new pcl::PointCloud<PointType2>);
   pcl::PointCloud<PointType2>::Ptr color_full(new pcl::PointCloud<PointType2>);
-  pcl::PointCloud<PointType2>::Ptr color_tmp(new pcl::PointCloud<PointType2>);
-
 
   ros::Time cur_t;
   geometry_msgs::PoseArray parray;
@@ -169,14 +132,16 @@ int main(int argc, char** argv)
     
     size_t i = k * gap;
     displayProgressBar(i, pose_size);
-    // mypcl::loadPCD(data_path + "pcd/", pcd_name_fill_num, pc_surf, i);
+
+    std::pair<int, int> index = get_submap_index(submaps, i);
     std::stringstream ss;
-    ss << std::setw(pcd_name_fill_num) << std::setfill('0') << i;
-    pcl::io::loadPCDFile(data_path + "pcd/" + ss.str() + ".pcd", *pc_surf);
-
-
+    ss << std::setw(pcd_name_fill_num) << std::setfill('0') << index.second;
+    
+    pcl::io::loadPCDFile(submaps[index.first].data_path + "pcd/" + ss.str() + ".pcd", *pc_surf);
     pcl::PointCloud<PointType2>::Ptr pc_filtered(new pcl::PointCloud<PointType2>);
+    pcl::PointCloud<PointType2>::Ptr pc_filtered_tmp(new pcl::PointCloud<PointType2>);
     pc_filtered->resize(pc_surf->points.size());
+
     int cnt = 0;
     for(size_t j = 0; j < pc_surf->points.size(); j++)
     {
@@ -189,16 +154,16 @@ int main(int argc, char** argv)
 
 
     downsample.setInputCloud(pc_filtered);
-    downsample.filter(*pc_filtered);
+    downsample.filter(*pc_filtered_tmp);
+    *pc_filtered = *pc_filtered_tmp;
     *color_full += *pc_filtered;
     if(1)
-      if(k % int(pose_size/gap  / 10) == 0){
-		downsampleAndMergePointCloud(color_full, color_tmp, 50, downsample);
-		*color_full = *color_tmp;
-        // downsample.setInputCloud(color_full);
-        // downsample.filter(*color_full);
+      if(i % int(pose_size/10) == 0){
+        downsample.setInputCloud(color_full);
+        downsample.filter(*pc_filtered_tmp);
+        *color_full = *pc_filtered_tmp;
+
         pcl::io::savePCDFileASCII(data_path+"out.pcd", *color_full);
-        std::cout<<"save!"<<std::endl;
       }
     // downsample_voxel(*pc_filtered, downsample_size);
 
@@ -277,10 +242,12 @@ int main(int argc, char** argv)
     marker_txt.color.b = 1.0f;
     marker_txt.color.a = 1.0;
     marker_txt.lifetime = ros::Duration();
+
     if(i%GAP == 0) markerArray.markers.push_back(marker_txt);
     pub_pose_number.publish(markerArray);
 
     ros::Duration(0.0001).sleep();
+
   }
 
   ros::Rate loop_rate(1);

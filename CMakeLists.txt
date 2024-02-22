@@ -22,6 +22,7 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 find_package(PCL REQUIRED)
+find_package(yaml-cpp REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(GTSAM REQUIRED QUIET)
 
@@ -46,8 +47,14 @@ catkin_package(
 add_executable(hba source/hba.cpp)
 target_link_libraries(hba ${catkin_LIBRARIES} ${PCL_LIBRARIES} gtsam)
 
-add_executable(visualize_map source/visualize.cpp)
-target_link_libraries(visualize_map ${catkin_LIBRARIES} ${PCL_LIBRARIES})
+add_executable(hbam source/hbam.cpp)
+target_link_libraries(hbam ${catkin_LIBRARIES} ${PCL_LIBRARIES} gtsam yaml-cpp)
 
-add_executable(testba source/testba.cpp)
-target_link_libraries(testba ${catkin_LIBRARIES} ${PCL_LIBRARIES} gtsam)
+add_executable(visualize source/visualize.cpp)
+target_link_libraries(visualize ${catkin_LIBRARIES} ${PCL_LIBRARIES})
+
+add_executable(visualizem source/visualizem.cpp)
+target_link_libraries(visualizem ${catkin_LIBRARIES} ${PCL_LIBRARIES} yaml-cpp)
+
+add_executable(record_tum_tra source/record_tum_tra.cpp)
+target_link_libraries(record_tum_tra ${catkin_LIBRARIES})

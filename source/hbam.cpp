@@ -2,6 +2,7 @@
 #include <iomanip>
 #include <fstream>
 #include <string>
+#include <utility>
 
 #include <mutex>
 #include <assert.h>
@@ -21,7 +22,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 
 #include "ba.hpp"
-#include "hba.hpp"
+#include "hbam.hpp"
 #include "tools.hpp"
 #include "mypcl.hpp"
 
@@ -77,22 +78,30 @@ void cut_voxel(unordered_map<VOXEL_LOC, OCTO_TREE_ROOT*>& feat_map,
 	}
 }
 
+std::pair<int, int> get_submap_index(std::vector<Submap> submaps, int j){
+	
+	for(int i = 0; i < submaps.size(); i++){
+		if(j < submaps[i].length)
+			return std::make_pair(i, j);
+		else	
+			j -= submaps[i].length;
+	}
+}
+
 void parallel_comp(LAYER& layer, int thread_id, LAYER& next_layer)
 {
 	std::cout<<"comp thread: "<<thread_id<<" start!"<<std::endl;
 	int& part_length = layer.part_length;
 	int& layer_num = layer.layer_num;
-	for(int i = thread_id*part_length; i < (thread_id+1)*part_length; i++)
-	{
+	for(int i = thread_id*part_length; i < (thread_id+1)*part_length; i++){
 		vector<pcl::PointCloud<PointType>::Ptr> src_pc, raw_pc;
 		src_pc.resize(WIN_SIZE); raw_pc.resize(WIN_SIZE);
 
 		double residual_cur = 0, residual_pre = 0;
 		vector<IMUST> x_buf(WIN_SIZE);
-		for(int j = 0; j < WIN_SIZE; j++)
-		{
-		x_buf[j].R = layer.pose_vec[i*GAP+j].q.toRotationMatrix();
-		x_buf[j].p = layer.pose_vec[i*GAP+j].t;
+		for(int j = 0; j < WIN_SIZE; j++){
+			x_buf[j].R = layer.pose_vec[i*GAP+j].q.toRotationMatrix();
+			x_buf[j].p = layer.pose_vec[i*GAP+j].t;
 		}
 		
 		if(layer_num != 1)
@@ -108,7 +117,8 @@ void parallel_comp(LAYER& layer, int thread_id, LAYER& next_layer)
 			if(loop == 0)
 			{
 				pcl::PointCloud<PointType>::Ptr pc(new pcl::PointCloud<PointType>);
-				mypcl::loadPCD(layer.data_path, pcd_name_fill_num, pc, j, "pcd/");
+				std::pair<int, int> index = get_submap_index(layer.submaps, j);
+				mypcl::loadPCD(layer.submaps[index.first].data_path, pcd_name_fill_num, pc, index.second, "pcd/");
 				raw_pc[j-i*GAP] = pc;
 			}
 			src_pc[j-i*GAP] = (*raw_pc[j-i*GAP]).makeShared();
@@ -156,6 +166,8 @@ void parallel_comp(LAYER& layer, int thread_id, LAYER& next_layer)
 		}
 
 		pcl::PointCloud<PointType>::Ptr pc_keyframe(new pcl::PointCloud<PointType>);
+		pcl::PointCloud<PointType>::Ptr pc_keyframe_pub(new pcl::PointCloud<PointType>);
+
 		for(size_t j = 0; j < WIN_SIZE; j++)
 		{
 		Eigen::Quaterniond q_tmp;
@@ -164,6 +176,7 @@ void parallel_comp(LAYER& layer, int thread_id, LAYER& next_layer)
 					x_buf[0].R.inverse() * (x_buf[j].p - x_buf[0].p));
 
 		pcl::PointCloud<PointType>::Ptr pc_oneframe(new pcl::PointCloud<PointType>);
+		
 		mypcl::transform_pointcloud(*src_pc[j], *pc_oneframe, t_tmp, q_tmp);
 		pc_keyframe = mypcl::append_cloud(pc_keyframe, *pc_oneframe);
 		}
@@ -171,11 +184,16 @@ void parallel_comp(LAYER& layer, int thread_id, LAYER& next_layer)
 		next_layer.pcds[i] = pc_keyframe;
 
 		if(layer_num > 0){
-		sensor_msgs::PointCloud2 localba_msg;
+			sensor_msgs::PointCloud2 localba_msg;
 
-		pcl::toROSMsg(*pc_keyframe, localba_msg);
-		localba_msg.header.frame_id = "camera_init";
-		pub_localba.publish(localba_msg);
+			Eigen::Quaterniond q_tmp;
+			Eigen::Vector3d t_tmp;
+			assign_qt(q_tmp, t_tmp, Quaterniond(x_buf[0].R), x_buf[0].p);
+			mypcl::transform_pointcloud(*pc_keyframe, *pc_keyframe_pub, t_tmp, q_tmp);
+
+			pcl::toROSMsg(*pc_keyframe_pub, localba_msg);
+			localba_msg.header.frame_id = "camera_init";
+			pub_localba.publish(localba_msg);
 		}
 	}
 }
@@ -228,7 +246,8 @@ void parallel_tail(LAYER& layer, int thread_id, LAYER& next_layer)
 			if(loop == 0)
 			{
 				pcl::PointCloud<PointType>::Ptr pc(new pcl::PointCloud<PointType>);
-				mypcl::loadPCD(layer.data_path, pcd_name_fill_num, pc, j, "pcd/");
+				std::pair<int, int> index = get_submap_index(layer.submaps, j);
+				mypcl::loadPCD(layer.submaps[index.first].data_path, pcd_name_fill_num, pc, index.second, "pcd/");
 				raw_pc[j-i*GAP] = pc;
 			}
 			src_pc[j-i*GAP] = (*raw_pc[j-i*GAP]).makeShared();
@@ -341,7 +360,8 @@ void parallel_tail(LAYER& layer, int thread_id, LAYER& next_layer)
 			if(loop == 0)
 			{
 				pcl::PointCloud<PointType>::Ptr pc(new pcl::PointCloud<PointType>);
-				mypcl::loadPCD(layer.data_path, pcd_name_fill_num, pc, j, "pcd/");
+				std::pair<int, int> index = get_submap_index(layer.submaps, j);
+				mypcl::loadPCD(layer.submaps[index.first].data_path, pcd_name_fill_num, pc, index.second, "pcd/");
 				raw_pc[j-i*GAP] = pc;
 			}
 			src_pc[j-i*GAP] = (*raw_pc[j-i*GAP]).makeShared();          
@@ -520,27 +540,23 @@ int main(int argc, char** argv)
 	pub_localba = nh.advertise<sensor_msgs::PointCloud2>("/localba", 1000);
 
 	int total_layer_num, thread_num;
-	double voxel_size, eigen_ratio;
 	string data_path;
 
 	nh.getParam("total_layer_num", total_layer_num);
 	nh.getParam("pcd_name_fill_num", pcd_name_fill_num);
 	nh.getParam("data_path", data_path);
 	nh.getParam("thread_num", thread_num);
-	nh.getParam("voxel_size", voxel_size);
-	nh.getParam("eigen_ratio", eigen_ratio);
 	std::cout<<"Initialize HBA........"<<std::endl;
-	HBA hba(total_layer_num, data_path, thread_num, voxel_size, eigen_ratio);
+	HBA hba(total_layer_num, data_path, thread_num);
 	std::cout<<"Finish initialization"<<std::endl;
 
-	for(int i = 0; i < 3; i++){
-		for(int i = 0; i < total_layer_num-1; i++)
-		{
-			std::cout<<"---------------------"<<std::endl;
-			distribute_thread(hba.layers[i], hba.layers[i+1]);
-			hba.update_next_layer_state(i);
-		}
-	
+	for(int i = 0; i < total_layer_num-1; i++)
+	{
+		std::cout<<"---------------------"<<std::endl;
+		distribute_thread(hba.layers[i], hba.layers[i+1]);
+		hba.update_next_layer_state(i);
+	}
+	for(int i = 0; i < 10; i++){
 		global_ba(hba.layers[total_layer_num-1]);
 		hba.pose_graph_optimization();
 	}

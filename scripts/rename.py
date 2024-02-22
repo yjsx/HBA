@@ -20,4 +20,4 @@ def rename_files_in_dir(directory):
         os.rename(old_file, new_file)
 
 # 使用上述函数重命名指定文件夹中的文件
-rename_files_in_dir(sys.argv[1])
+rename_files_in_dir(os.path.join(sys.argv[1], "pcd"))
