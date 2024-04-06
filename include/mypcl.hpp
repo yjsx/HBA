@@ -140,14 +140,15 @@ namespace mypcl
     return *(std::next(dis_vec.begin(), (int)((ratio) * dis_vec.size())));
   }
 
-  void write_pose(std::vector<pose>& pose_vec, std::string path)
+  void write_pose(std::vector<pose>& pose_vec, std::string path,  std::string odom_file = "pose.json")
   {
+    std::cout << "Writing pose to " << path + odom_file << std::endl;
     std::ofstream file;
-    file.open(path + "pose.json", std::ofstream::trunc);
+    file.open(path + odom_file, std::ofstream::trunc);
     file.close();
     Eigen::Quaterniond q0(pose_vec[0].q.w(), pose_vec[0].q.x(), pose_vec[0].q.y(), pose_vec[0].q.z());
     Eigen::Vector3d t0(pose_vec[0].t(0), pose_vec[0].t(1), pose_vec[0].t(2));
-    file.open(path + "pose.json", std::ofstream::app);
+    file.open(path + odom_file, std::ofstream::app);
 
   
 
@@ -200,7 +201,7 @@ namespace mypcl
   }
 
 
-  void writeEVOPose(std::vector<double>& lidar_times, std::vector<pose>& pose_vec, std::string path)
+  void writeEVOPose(std::vector<double>& lidar_times, std::vector<pose>& pose_vec, std::string path, std::string odom_file = "pose.json")
   {
     std::ofstream file;
     file.open(path + "evo_pose.txt", std::ofstream::trunc);

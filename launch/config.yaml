@@ -1,0 +1,23 @@
+submap_num: 3
+submap0:   
+  transformation: [[1, 0, 0, 0],
+                   [0, 1, 0, 0],
+                   [0, 0, 1, 0],
+                   [0, 0, 0, 1]]
+  data_path: /data/shared_workspace/duanyifan/uav_ugv/ground-01/
+  topic: /ground-01
+submap1:
+  transformation: [[0.955231 ,0.293066 ,0.040573 ,-3.431856],
+                  [-0.294483, 0.955019, 0.034898, -8.443104],
+                  [-0.028520, -0.045283, 0.998567, -0.311153],
+                  [0.000000 ,0.000000 ,0.000000 ,1.000000]]
+  data_path: /data/shared_workspace/duanyifan/uav_ugv/aerial-07/
+  topic: /aerial-07
+submap2:   
+  transformation: [[0.992629, 0.118971, -0.02311, -11.8502],
+                  [-0.11909, 0.992874, -0.00420, -7.36728],
+                  [0.022453, 0.006925, 0.999724, 0.182221],
+                  [0.000000, 0.000000, 0.000000, 1.000000]]
+  data_path: /data/shared_workspace/duanyifan/uav_ugv/aerial-08/
+  topic: /aerial-08
+

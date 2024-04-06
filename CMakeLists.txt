@@ -58,3 +58,6 @@ target_link_libraries(visualizem ${catkin_LIBRARIES} ${PCL_LIBRARIES} yaml-cpp)
 
 add_executable(record_tum_tra source/record_tum_tra.cpp)
 target_link_libraries(record_tum_tra ${catkin_LIBRARIES})
+
+# add_executable(hba_online source/hba_online.cpp)
+# target_link_libraries(hba_online ${catkin_LIBRARIES} ${PCL_LIBRARIES} yaml-cpp)

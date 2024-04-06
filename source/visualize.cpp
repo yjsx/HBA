@@ -130,23 +130,23 @@ int main(int argc, char** argv)
   ros::Publisher pub_trajectory = nh.advertise<visualization_msgs::Marker>("/trajectory_marker", 100);
   ros::Publisher pub_pose_number = nh.advertise<visualization_msgs::MarkerArray>("/pose_number", 100);
 
-  string data_path;
+  string data_path, pcd_file, odom_file;
   double downsample_size, marker_size;
   int pcd_name_fill_num, gap, start;
 
   nh.getParam("data_path", data_path);
+  nh.getParam("pcd_file", pcd_file);
+  nh.getParam("odom_file", odom_file);
   nh.getParam("downsample_size", downsample_size);
   nh.getParam("pcd_name_fill_num", pcd_name_fill_num);
   nh.getParam("marker_size", marker_size);
   nh.getParam("gap", gap);
   nh.getParam("start", start);
 
-
-
   sensor_msgs::PointCloud2 debugMsg, cloudMsg, outMsg;
   vector<mypcl::pose> pose_vec;
-  cout<<data_path + "pose.json"<<endl;
-  pose_vec = mypcl::read_pose(data_path + "pose.json");
+  cout<<data_path + odom_file<<endl;
+  pose_vec = mypcl::read_pose(data_path + odom_file);
   size_t pose_size = pose_vec.size();
   cout<<"pose size "<<pose_size<<endl;
 
@@ -172,7 +172,7 @@ int main(int argc, char** argv)
     // mypcl::loadPCD(data_path + "pcd/", pcd_name_fill_num, pc_surf, i);
     std::stringstream ss;
     ss << std::setw(pcd_name_fill_num) << std::setfill('0') << i;
-    pcl::io::loadPCDFile(data_path + "pcd/" + ss.str() + ".pcd", *pc_surf);
+    pcl::io::loadPCDFile(data_path + pcd_file + ss.str() + ".pcd", *pc_surf);
 
 
     pcl::PointCloud<PointType2>::Ptr pc_filtered(new pcl::PointCloud<PointType2>);

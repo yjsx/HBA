@@ -133,14 +133,15 @@ public:
   int thread_num, total_layer_num;
   std::vector<LAYER> layers;
   std::string data_path;
+  std::string odom_file;
   std::vector<Submap> submaps;
 
-  HBA(int total_layer_num_, std::string data_path_, int thread_num_)
+  HBA(int total_layer_num_, std::string data_path_, int thread_num_, double voxel_size, double eigen_ratio, double downsample_size, std::string odom_file_="pose.json")
   {
     total_layer_num = total_layer_num_;
     thread_num = thread_num_;
     data_path = data_path_;
-
+    odom_file = odom_file_;
     layers.resize(total_layer_num);
     std::cout<<"init layers"<<std::endl;
     for(int i = 0; i < total_layer_num; i++)
@@ -149,6 +150,9 @@ public:
 
       layers[i].layer_num = i+1;
       layers[i].thread_num = thread_num;
+      layers[i].voxel_size = voxel_size;
+      layers[i].eigen_ratio = eigen_ratio;
+      layers[i].downsample_size = downsample_size;
     }
 
 	submaps = get_submap_info(data_path+"config.yaml");
@@ -156,17 +160,17 @@ public:
 
 
     layers[0].data_path = data_path;
-    std::cout<<data_path + "pose.json"<<std::endl;
-	vector<mypcl::pose> pose_all;
-	for(auto& submap: submaps) {
-		vector<mypcl::pose> pose_tmp = mypcl::read_pose(submap.data_path + "pose.json", submap.rotation, submap.translation);
-		submap.length = pose_tmp.size();
-		pose_all.insert(pose_all.end(), pose_tmp.begin(), pose_tmp.end());
-	}
+    std::cout<<data_path + odom_file<<std::endl;
+    vector<mypcl::pose> pose_all;
+    for(auto& submap: submaps) {
+      vector<mypcl::pose> pose_tmp = mypcl::read_pose(submap.data_path + "pose.json", submap.rotation, submap.translation);
+      submap.length = pose_tmp.size();
+      pose_all.insert(pose_all.end(), pose_tmp.begin(), pose_tmp.end());
+    }
 
-	for(const auto& submap: submaps) {
-		std::cout<<submap.length<<std::endl;
-	}
+    for(const auto& submap: submaps) {
+      std::cout<<submap.length<<std::endl;
+    }
 
     layers[0].pose_vec = pose_all;
     layers[0].submaps = submaps;

@@ -31,7 +31,7 @@ using namespace Eigen;
 ros::Publisher pub_localba;
 
 int pcd_name_fill_num = 0;
-
+std::string pcd_file;
 void cut_voxel(unordered_map<VOXEL_LOC, OCTO_TREE_ROOT*>& feat_map,
                 pcl::PointCloud<PointType>& feat_pt,
                 Eigen::Quaterniond q, Eigen::Vector3d t, int fnum,
@@ -77,7 +77,7 @@ void cut_voxel(unordered_map<VOXEL_LOC, OCTO_TREE_ROOT*>& feat_map,
 	}
 }
 
-void parallel_comp(LAYER& layer, int thread_id, LAYER& next_layer)
+void parallel_comp(LAYER& layer, int thread_id, LAYER& next_layer, std::string pcd_file = "pcd/")
 {
 	std::cout<<"comp thread: "<<thread_id<<" start!"<<std::endl;
 	int& part_length = layer.part_length;
@@ -86,7 +86,6 @@ void parallel_comp(LAYER& layer, int thread_id, LAYER& next_layer)
 	{
 		vector<pcl::PointCloud<PointType>::Ptr> src_pc, raw_pc;
 		src_pc.resize(WIN_SIZE); raw_pc.resize(WIN_SIZE);
-
 		double residual_cur = 0, residual_pre = 0;
 		vector<IMUST> x_buf(WIN_SIZE);
 		for(int j = 0; j < WIN_SIZE; j++)
@@ -108,7 +107,7 @@ void parallel_comp(LAYER& layer, int thread_id, LAYER& next_layer)
 			if(loop == 0)
 			{
 				pcl::PointCloud<PointType>::Ptr pc(new pcl::PointCloud<PointType>);
-				mypcl::loadPCD(layer.data_path, pcd_name_fill_num, pc, j, "pcd/");
+				mypcl::loadPCD(layer.data_path, pcd_name_fill_num, pc, j, pcd_file);
 				raw_pc[j-i*GAP] = pc;
 			}
 			src_pc[j-i*GAP] = (*raw_pc[j-i*GAP]).makeShared();
@@ -180,7 +179,7 @@ void parallel_comp(LAYER& layer, int thread_id, LAYER& next_layer)
 	}
 }
 
-void parallel_tail(LAYER& layer, int thread_id, LAYER& next_layer)
+void parallel_tail(LAYER& layer, int thread_id, LAYER& next_layer, std::string pcd_file = "pcd/")
 {
 	std::cout<<"tail thread: "<<thread_id<<" start!"<<std::endl;
 	int& part_length = layer.part_length;
@@ -228,7 +227,7 @@ void parallel_tail(LAYER& layer, int thread_id, LAYER& next_layer)
 			if(loop == 0)
 			{
 				pcl::PointCloud<PointType>::Ptr pc(new pcl::PointCloud<PointType>);
-				mypcl::loadPCD(layer.data_path, pcd_name_fill_num, pc, j, "pcd/");
+				mypcl::loadPCD(layer.data_path, pcd_name_fill_num, pc, j, pcd_file);
 				raw_pc[j-i*GAP] = pc;
 			}
 			src_pc[j-i*GAP] = (*raw_pc[j-i*GAP]).makeShared();
@@ -264,7 +263,6 @@ void parallel_tail(LAYER& layer, int thread_id, LAYER& next_layer)
 
 		VOX_OPTIMIZER opt_lsv(WIN_SIZE);
 		t0 = ros::Time::now().toSec();
-
 		opt_lsv.remove_outlier(x_buf, voxhess, layer.reject_ratio);
 		PLV(6) hess_vec;
 
@@ -341,7 +339,7 @@ void parallel_tail(LAYER& layer, int thread_id, LAYER& next_layer)
 			if(loop == 0)
 			{
 				pcl::PointCloud<PointType>::Ptr pc(new pcl::PointCloud<PointType>);
-				mypcl::loadPCD(layer.data_path, pcd_name_fill_num, pc, j, "pcd/");
+				mypcl::loadPCD(layer.data_path, pcd_name_fill_num, pc, j, pcd_file);
 				raw_pc[j-i*GAP] = pc;
 			}
 			src_pc[j-i*GAP] = (*raw_pc[j-i*GAP]).makeShared();          
@@ -493,15 +491,15 @@ void global_ba(LAYER& layer)
 	printf("Downsample: %f, Cut: %f, Recut: %f, Tras: %f, Sol: %f\n", dsp_t, cut_t, recut_t, tran_t, sol_t);
 }
 
-void distribute_thread(LAYER& layer, LAYER& next_layer)
+void distribute_thread(LAYER& layer, LAYER& next_layer, std::string pcd_file =  "pcd/")
 {
 	int& thread_num = layer.thread_num;
 	double t0 = ros::Time::now().toSec();
 	for(int i = 0; i < thread_num; i++)
 		if(i < thread_num-1)
-		layer.mthreads[i] = new thread(parallel_comp, ref(layer), i, ref(next_layer));
+		layer.mthreads[i] = new thread(parallel_comp, ref(layer), i, ref(next_layer), pcd_file);
 		else
-		layer.mthreads[i] = new thread(parallel_tail, ref(layer), i, ref(next_layer));
+		layer.mthreads[i] = new thread(parallel_tail, ref(layer), i, ref(next_layer), pcd_file);
 	// printf("Thread distribution time: %f\n", ros::Time::now().toSec()-t0);
 
 	t0 = ros::Time::now().toSec();
@@ -520,8 +518,8 @@ int main(int argc, char** argv)
 	pub_localba = nh.advertise<sensor_msgs::PointCloud2>("/localba", 1000);
 
 	int total_layer_num, thread_num;
-	double voxel_size, eigen_ratio;
-	string data_path;
+	double voxel_size, eigen_ratio, downsample_size;
+	string data_path,  odom_file;
 
 	nh.getParam("total_layer_num", total_layer_num);
 	nh.getParam("pcd_name_fill_num", pcd_name_fill_num);
@@ -529,18 +527,24 @@ int main(int argc, char** argv)
 	nh.getParam("thread_num", thread_num);
 	nh.getParam("voxel_size", voxel_size);
 	nh.getParam("eigen_ratio", eigen_ratio);
+	nh.getParam("downsample_size", downsample_size);
+
+	nh.getParam("pcd_file", pcd_file);
+	nh.getParam("odom_file", odom_file);
+
+
 	std::cout<<"Initialize HBA........"<<std::endl;
-	HBA hba(total_layer_num, data_path, thread_num, voxel_size, eigen_ratio);
+	HBA hba(total_layer_num, data_path, thread_num, voxel_size, eigen_ratio, downsample_size, odom_file);
 	std::cout<<"Finish initialization"<<std::endl;
 
-	for(int i = 0; i < 3; i++){
+	for(int i = 0; i < 2; i++){
 		for(int i = 0; i < total_layer_num-1; i++)
 		{
 			std::cout<<"---------------------"<<std::endl;
-			distribute_thread(hba.layers[i], hba.layers[i+1]);
+			distribute_thread(hba.layers[i], hba.layers[i+1], pcd_file);
 			hba.update_next_layer_state(i);
 		}
-	
+		// hba.write_pose();
 		global_ba(hba.layers[total_layer_num-1]);
 		hba.pose_graph_optimization();
 	}

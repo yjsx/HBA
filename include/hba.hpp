@@ -129,13 +129,15 @@ public:
   int thread_num, total_layer_num;
   std::vector<LAYER> layers;
   std::string data_path;
+  std::string odom_file;
+  
 
-  HBA(int total_layer_num_, std::string data_path_, int thread_num_, double voxel_size, double eigen_ratio)
+  HBA(int total_layer_num_, std::string data_path_, int thread_num_, double voxel_size, double eigen_ratio, double downsample_size, std::string odom_file_="pose.json")
   {
     total_layer_num = total_layer_num_;
     thread_num = thread_num_;
     data_path = data_path_;
-
+    odom_file = odom_file_;
     layers.resize(total_layer_num);
     std::cout<<"init layers"<<std::endl;
     for(int i = 0; i < total_layer_num; i++)
@@ -146,10 +148,11 @@ public:
       layers[i].thread_num = thread_num;
       layers[i].voxel_size = voxel_size;
       layers[i].eigen_ratio = eigen_ratio;
+      layers[i].downsample_size = downsample_size;
     }
     layers[0].data_path = data_path;
-    std::cout<<data_path + "pose.json"<<std::endl;
-    layers[0].pose_vec = mypcl::read_pose(data_path + "pose.json");
+    std::cout<<data_path + odom_file<<std::endl;
+    layers[0].pose_vec = mypcl::read_pose(data_path + odom_file);
     std::cout<<"init parameter"<<std::endl;
     layers[0].init_parameter();
     std::cout<<"init storage"<<std::endl;
@@ -277,7 +280,15 @@ public:
       gtsam::Pose3 pose = results.at(i).cast<gtsam::Pose3>();
       assign_qt(init_pose[i].q, init_pose[i].t, Eigen::Quaterniond(pose.rotation().matrix()), pose.translation());
     }
-    mypcl::write_pose(init_pose, data_path);
+    mypcl::write_pose(init_pose, data_path, odom_file);
+    printf("pgo complete\n");
+  }
+  void write_pose()
+  {
+    std::vector<mypcl::pose> upper_pose, init_pose;
+    upper_pose = layers[total_layer_num-1].pose_vec;
+    init_pose = layers[0].pose_vec;
+    mypcl::write_pose(init_pose, data_path, odom_file);
     printf("pgo complete\n");
   }
 };
